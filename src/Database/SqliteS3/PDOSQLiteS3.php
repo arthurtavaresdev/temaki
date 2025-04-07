@@ -8,15 +8,14 @@ use RuntimeException;
 
 class PDOSQLiteS3 extends PDO
 {
-    private readonly DbSynchronizer $dbSynchronizer;
+    public readonly DbSynchronizer $dbSynchronizer;
 
     /**
-     * @param string $bucket
-     * @param string $key
+     * @param string $path
      */
-    public function __construct(string $bucket, string $key)
+    public function __construct(string $path)
     {
-        $this->dbSynchronizer = new DbSynchronizer($bucket, $key);
+        $this->dbSynchronizer = new DbSynchronizer($path);
 
         $dbFileName = $this->dbSynchronizer->open();
 

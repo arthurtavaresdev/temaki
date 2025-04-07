@@ -2,23 +2,26 @@
 
 namespace ArthurTavaresDev\Temaki;
 
+use Closure;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Connectors\ConnectionFactory;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Database\Schema\SQLiteBuilder;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 trait Temaki
 {
-    protected static $temakiConnection;
+    protected array $rows = [];
+    protected array $schema = [];
+    protected static Connection $temakiConnection;
 
-    public function getRows()
+    public function getRows(): array
     {
         return $this->rows;
     }
 
-    public function getSchema()
+    public function getSchema(): array
     {
         return $this->schema ?? [];
     }
@@ -28,7 +31,6 @@ trait Temaki
         return (new \ReflectionClass(static::class))->getFileName();
     }
 
-
     public static function resolveConnection($connection = null)
     {
         return static::$temakiConnection;
@@ -36,7 +38,6 @@ trait Temaki
 
     protected function temakiCachePath(): string
     {
-        $bucket = config('filesystems.disks.s3.bucket');
         $fileName = $this->temakiCacheFileName();
 
         if(! Storage::disk('s3')->exists($fileName)) {
@@ -44,7 +45,7 @@ trait Temaki
         }
 
 
-        return "s3://{$bucket}/{$fileName}";
+        return "temaki:{$fileName}";
     }
 
     protected function temakiCacheFileName()
@@ -54,7 +55,7 @@ trait Temaki
 
     public static function bootTemaki(): void
     {
-        $instance = (new static);
+        $instance = (new static());
         static::setSqliteConnection($instance->temakiCachePath());
         $instance->migrate();
     }
@@ -69,8 +70,8 @@ trait Temaki
 
     protected function newRelatedInstance($class)
     {
-        return tap(new $class, function ($instance) {
-            if (!$instance->getConnectionName()) {
+        return tap(new $class(), function ($instance) {
+            if (! $instance->getConnectionName()) {
                 $instance->setConnection($this->getConnectionResolver()?->getDefaultConnection());
             }
         });
@@ -138,7 +139,7 @@ trait Temaki
                 $table->{$type}($column)->nullable();
             }
 
-            if ((!array_key_exists('updated_at', $firstRow) || !array_key_exists('created_at', $firstRow)) && $this->usesTimestamps()) {
+            if ((! array_key_exists('updated_at', $firstRow) || ! array_key_exists('created_at', $firstRow)) && $this->usesTimestamps()) {
                 $table->timestamps();
             }
 
@@ -156,26 +157,33 @@ trait Temaki
         $this->createTableSafely($tableName, function ($table) {
             $schema = $this->getSchema();
 
-            if ($this->incrementing && ! in_array($this->primaryKey, array_keys($schema))) {
+            if ($this->incrementing && ! array_key_exists($this->primaryKey, $schema)) {
                 $table->increments($this->primaryKey);
             }
 
             foreach ($schema as $name => $type) {
-                if ($name === $this->primaryKey && $type == 'integer') {
-                    $table->increments($this->primaryKey);
-                    continue;
+                if ($name === $this->primaryKey) {
+                    if($type === 'integer') {
+                        $table->increments($this->primaryKey);
+                        continue;
+                    }
+
+                    if($this->keyType === 'string') {
+                        $table->string($this->primaryKey)->primary();
+                        continue;
+                    }
                 }
 
                 $table->{$type}($name)->nullable();
             }
 
-            if ($this->usesTimestamps() && (! in_array('updated_at', array_keys($schema)) || ! in_array('created_at', array_keys($schema)))) {
+            if ((! array_key_exists('updated_at', $schema) || ! array_key_exists('created_at', $schema)) && $this->usesTimestamps()) {
                 $table->timestamps();
             }
         });
     }
 
-    protected function getSchemaBuilder(): SQLiteBuilder
+    protected function getSchemaBuilder()
     {
         return static::resolveConnection()->getSchemaBuilder();
     }
@@ -201,13 +209,17 @@ trait Temaki
         }
     }
 
+    /**
+     * @throws ReflectionException
+     */
     public function usesTimestamps(): bool
     {
         // Override the Laravel default value of $timestamps = true; Unless otherwise set.
         return (new \ReflectionClass($this))->getProperty('timestamps')->class === static::class && parent::usesTimestamps();
     }
 
-    public function getSushiInsertChunkSize() {
+    public function getSushiInsertChunkSize()
+    {
         return $this->temakiInsertChunkSize ?? 100;
     }
 

@@ -1,13 +1,10 @@
-<?php declare(strict_types=1);
+<?php
 
 namespace ArthurTavaresDev\Temaki\Database\SqliteS3;
 
-use Aws\S3\S3Client;
-use Illuminate\Log\Logger;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Psr\Log\LoggerInterface;
-use Psr\Log\LogLevel;
 use RuntimeException;
 
 /**
@@ -21,19 +18,26 @@ class DbSynchronizer
     private readonly LoggerInterface $logger;
 
     /**
-     * @param string $bucket
-     * @param string $key
+     * @param string $path
      */
     public function __construct(
-        private readonly string $bucket,
-        private readonly string $key
+        private readonly string $path
     ) {
         $this->logger = Log::getLogger();
 
         $this->logger->debug('DbSynchronizer initialized', [
-            'bucket' => $this->bucket,
-            'key' => $this->key,
+            'path' => $this->path,
         ]);
+    }
+
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+
+    public function getDbFileName(): ?string
+    {
+        return $this->dbFileName;
     }
 
     /**
@@ -45,7 +49,7 @@ class DbSynchronizer
         $this->logger->info('Downloading and opening the SQLite database');
 
         try {
-            $contentAsResource = Storage::disk('s3')->readStream($this->key);
+            $contentAsResource = Storage::disk('s3')->readStream($this->path);
         } catch (\Aws\S3\Exception\S3Exception $e) {
             // The file does not exist yet, create an empty one
             $contentAsResource = fopen('php://memory', 'rb');
@@ -81,17 +85,17 @@ class DbSynchronizer
             return;
         }
 
-        $fileChanged = $this->dbFileHash !== md5_file($this->dbFileName);
+        $fileChanged = $this->wasModified();
 
         $this->logger->info('Closing' . ($fileChanged ? ' and uploading' : '') . ' the SQLite database');
 
         if ($fileChanged) {
             // Clear the file
-            Storage::disk('s3')->put($this->key, '');
+            Storage::disk('s3')->put($this->path, '');
 
             // Upload back to S3
             $contentAsResource = fopen($this->dbFileName, 'rb');
-            Storage::disk('s3')->put($this->key, $contentAsResource);
+            Storage::disk('s3')->put($this->path, $contentAsResource);
             fclose($contentAsResource);
         }
 
@@ -103,5 +107,10 @@ class DbSynchronizer
     public function isOpened(): bool
     {
         return $this->dbFileName !== null;
+    }
+
+    public function wasModified(): bool
+    {
+        return $this->dbFileHash !== md5_file($this->dbFileName);
     }
 }
