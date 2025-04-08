@@ -23,7 +23,39 @@ trait Temaki
 
     public function getSchema(): array
     {
-        return $this->schema ?? [];
+        if(filled($this->schema)) {
+            return $this->schema;
+        }
+
+        if(filled($this->rows)) {
+            $this->schema = array_keys(head($this->rows));
+            return $this->schema;
+        }
+
+        $docComment = (new \ReflectionClass(static::class))->getDocComment();
+        preg_match_all('/\* @property\s+([^\s]+)\s+\$([^\s]+)/', $docComment, $matches);
+        $properties = collect($matches[2])
+            ->combine($matches[1])
+            ->map(function ($type) {
+                if (strpos($type, 'Carbon') !== false) {
+                    return 'datetime';
+                }
+
+                // Tipos com null (ex: string|null -> string, int|null -> int, etc.)
+                if (strpos($type, 'null') !== false) {
+                    return strstr($type, '|', true) ?: $type;
+                }
+
+                return $type;
+            })
+            ->all();
+
+
+        if(filled($this->schema)) {
+            return $this->schema;
+        }
+
+        return [];
     }
 
     protected function temakiCacheReferencePath(): false|string
@@ -99,8 +131,19 @@ trait Temaki
             $this->createTableWithNoData($tableName);
         }
 
-        foreach (array_chunk($rows, $this->getSushiInsertChunkSize()) ?? [] as $inserts) {
-            self::upsert($inserts, [$this->primaryKey]);
+        try{
+            foreach (array_chunk($rows, $this->getSushiInsertChunkSize()) ?? [] as $inserts) {
+                self::upsert($inserts, [$this->primaryKey]);
+            }
+        } catch (QueryException $e) {
+            if (Str::contains($e->getMessage(), sprintf('table %s has no column named', $tableName)))
+            {
+                $this->getSchemaBuilder()->dropIfExists($this->getTable());
+                $this->migrate();
+                return;
+            }
+
+            throw $e;
         }
     }
 
