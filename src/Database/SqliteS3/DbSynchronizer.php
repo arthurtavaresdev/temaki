@@ -25,7 +25,7 @@ class DbSynchronizer
     ) {
         $this->logger = Log::getLogger();
 
-        $this->logger->debug('DbSynchronizer initialized', [
+        $this->log('DbSynchronizer initialized', [
             'path' => $this->path,
         ]);
     }
@@ -40,13 +40,22 @@ class DbSynchronizer
         return $this->dbFileName;
     }
 
+    public function log(string $message, array $context = []): void
+    {
+        if (! config('temaki.logging.enabled')) {
+            return;
+        }
+
+        $this->logger->log(config('temaki.logging.level'), $message, $context);
+    }
+
     /**
      * @return string The path to the DB file name
      */
     public function open(): string
     {
 
-        $this->logger->info('Downloading and opening the SQLite database');
+        $this->log('Downloading and opening the SQLite database');
 
         try {
             $contentAsResource = Storage::disk('s3')->readStream($this->path);
@@ -87,7 +96,7 @@ class DbSynchronizer
 
         $fileChanged = $this->wasModified();
 
-        $this->logger->info('Closing' . ($fileChanged ? ' and uploading' : '') . ' the SQLite database');
+        $this->log('Closing' . ($fileChanged ? ' and uploading' : '') . ' the SQLite database');
 
         if ($fileChanged) {
             // Clear the file

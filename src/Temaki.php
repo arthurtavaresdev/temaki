@@ -82,7 +82,7 @@ trait Temaki
 
     protected function temakiCacheFileName()
     {
-        return config('temaki.cache-prefix', 'temaki').'-'.Str::kebab(str_replace('\\', '', static::class)).'.sqlite';
+        return config('temaki.s3_path', 'temaki') . '/' . config('temaki.cache-prefix', 'temaki').'-'.Str::kebab(str_replace('\\', '', static::class)).'.sqlite';
     }
 
     public static function bootTemaki(): void
