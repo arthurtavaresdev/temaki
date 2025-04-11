@@ -57,6 +57,19 @@ trait Temaki
 
 
         if(filled($properties)) {
+            $properties = collect($properties)
+                ->map(function ($type) {
+                    return match ($type) {
+                        'int' => 'integer',
+                        'float' => 'float',
+                        'bool' => 'boolean',
+                        'object' => 'json',
+                        'date', 'datetime' => 'timestamp',
+                        default => 'string',
+                    };
+                })
+                ->all();
+
             return $this->schema = $properties;
         }
 
@@ -94,7 +107,7 @@ trait Temaki
     {
         $instance = (new static());
 
-        $path = app()->runningUnitTests() ? ":memory:" : $instance->temakiCacheReferencePath();
+        $path = app()->runningUnitTests() ? ":memory:" : $instance->temakiCachePath();
         static::setSqliteConnection($path);
         $instance->migrate();
     }
