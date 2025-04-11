@@ -21,6 +21,11 @@ trait Temaki
         return $this->rows;
     }
 
+    public function testingRows()
+    {
+        return [];
+    }
+
     public function getSchema(): array
     {
         if(filled($this->schema)) {
@@ -122,7 +127,7 @@ trait Temaki
 
     public function migrate(): void
     {
-        $rows = $this->getRows();
+        $rows = app()->runningUnitTests() ? $this->testingRows() : $this->getRows();
         $tableName = $this->getTable();
 
         if (count($rows)) {
