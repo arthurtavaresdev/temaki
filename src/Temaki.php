@@ -56,8 +56,8 @@ trait Temaki
             ->all();
 
 
-        if(filled($this->schema)) {
-            return $this->schema;
+        if(filled($properties)) {
+            return $this->schema = $properties;
         }
 
         return [];
@@ -93,7 +93,9 @@ trait Temaki
     public static function bootTemaki(): void
     {
         $instance = (new static());
-        static::setSqliteConnection($instance->temakiCachePath());
+
+        $path = app()->runningUnitTests() ? ":memory:" : $instance->temakiCacheReferencePath();
+        static::setSqliteConnection($path);
         $instance->migrate();
     }
 
