@@ -86,28 +86,70 @@ trait Temaki
         return static::$temakiConnection;
     }
 
-    protected function temakiCachePath(): string
+    protected function temakiPath()
     {
-        $fileName = $this->temakiCacheFileName();
+        $fileName = $this->temakiFileName();
+        return config('temaki.path', 'temaki') . '/' . $fileName;
+    }
 
-        if(! Storage::disk('s3')->exists($fileName)) {
-            Storage::disk('s3')->put($fileName, '');
+    protected function temakiS3Path(): string
+    {
+        $path =  $this->temakiPath();
+
+        if(! Storage::disk('s3')->exists($path)) {
+            Storage::disk('s3')->put($path, '');
         }
 
-
-        return "temaki:{$fileName}";
+        return "temaki:{$path}";
     }
 
-    protected function temakiCacheFileName()
+    protected function temakiFileName()
     {
-        return config('temaki.s3_path', 'temaki') . '/' . config('temaki.cache-prefix', 'temaki').'-'.Str::kebab(str_replace('\\', '', static::class)).'.sqlite';
+        return config('temaki.file-prefix', 'temaki').'-'.Str::kebab(str_replace('\\', '', static::class)).'.sqlite';
     }
+
+    protected function temakiLocalPath(): string
+    {
+
+        if(config('temaki.force_local_path', false)) {
+            $path = config('temaki.local_path') . '/' . $this->temakiFileName();
+            $this->createLocalPath($path);
+
+            return $path;
+        }
+
+        $cachePath =  storage_path('framework/cache');
+        $path = realpath($cachePath) . '/' . config('temaki.path') . '/' . $this->temakiFileName();
+        $this->createLocalPath($path);
+        return $path;
+    }
+
+    protected function createLocalPath($path)
+    {
+        if(file_exists($path)) {
+            return;
+        }
+
+        $dir = dirname($path);
+        if(!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        file_put_contents($path, '');
+    }
+
 
     public static function bootTemaki(): void
     {
         $instance = (new static());
 
-        $path = app()->runningUnitTests() ? ":memory:" : $instance->temakiCachePath();
+        $mode = config('temaki.mode', 's3');
+        $path = match ($mode) {
+            's3' => $instance->temakiS3Path(),
+            'memory' => ':memory:',
+            'local' => $instance->temakiLocalPath(),
+        };
+
         static::setSqliteConnection($path);
         $instance->migrate();
     }
@@ -152,7 +194,7 @@ trait Temaki
         }
 
         try{
-            foreach (array_chunk($rows, $this->getSushiInsertChunkSize()) ?? [] as $inserts) {
+            foreach (array_chunk($rows, $this->getTemakiInsertChunkSize()) ?? [] as $inserts) {
                 self::upsert($inserts, [$this->primaryKey]);
             }
         } catch (QueryException $e) {
@@ -281,7 +323,7 @@ trait Temaki
         return (new \ReflectionClass($this))->getProperty('timestamps')->class === static::class && parent::usesTimestamps();
     }
 
-    public function getSushiInsertChunkSize()
+    public function getTemakiInsertChunkSize()
     {
         return $this->temakiInsertChunkSize ?? 100;
     }
